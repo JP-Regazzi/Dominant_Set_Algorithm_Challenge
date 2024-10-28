@@ -1,8 +1,7 @@
 import sys, os, time
 import networkx as nx
 
-
-def dominant(g):
+def dominant(graph):
     """
         A Faire:
         - Ecrire une fonction qui retourne deux dominants du graphe non dirigé g passé en parametre.
@@ -14,9 +13,110 @@ def dominant(g):
         :param g: le graphe est donné dans le format networkx : https://networkx.github.io/documentation/stable/reference/classes/graph.html
 
     """
-    weights = nx.get_node_attributes(g, 'weight')   # Pour obtenir un itérable avec les poids.
-    return list(g.nodes), list(g.nodes)  # Une solution, c'est la plus mauvaise possible, score de 1.
 
+    def get_longest_path(graph):
+        def dfs(node, visited, path):
+            visited.add(node)
+            path.append(node)
+            longest = path.copy()
+
+            for neighbor in graph.neighbors(node):
+                if neighbor not in visited:
+                    current_path = dfs(neighbor, visited, path)
+                    if len(current_path) > len(longest):
+                        longest = current_path
+
+            path.pop()
+            visited.remove(node)
+            return longest
+
+        longest_path = []
+        for node in graph.nodes():
+            current_path = dfs(node, set(), [])
+            if len(current_path) > len(longest_path):
+                longest_path = current_path
+        return longest_path
+    
+    def generate_dom_set1(start_node, graph):
+        dom_set1 = []
+        temp_graph = graph.copy()
+
+        while temp_graph.nodes():
+            dom_set1.append(start_node)
+            for neighbor in list(temp_graph.neighbors(start_node)):
+                temp_graph.remove_node(neighbor)
+            temp_graph.remove_node(start_node)
+            if temp_graph.nodes():
+                start_node = max(temp_graph.degree, key=lambda x: x[1])[0]
+        return dom_set1
+
+    def generate_dom_set2(start_node, graph, dom_set1):
+        dom_set2 = [start_node]
+        temp_graph = graph.copy()
+        for neighbor in list(temp_graph.neighbors(start_node)):
+            temp_graph.remove_node(neighbor)
+        temp_graph.remove_node(start_node)
+
+        while temp_graph.nodes():
+            nodes_excluding_dom_set1 = [n for n in temp_graph.nodes() if n not in dom_set1]
+            if nodes_excluding_dom_set1:
+                max_node = max(nodes_excluding_dom_set1, key=lambda n: temp_graph.degree(n))
+            else:
+                max_node = max(temp_graph.degree, key=lambda x: x[1])[0]
+            dom_set2.append(max_node)
+            for neighbor in list(temp_graph.neighbors(max_node)):
+                temp_graph.remove_node(neighbor)
+            temp_graph.remove_node(max_node)
+        return dom_set2
+    
+    def compute_score(set1, set2, graph):
+        intersection_size = len(set(set1) & set(set2))
+        total_nodes = len(set1) + len(set2) + intersection_size
+        return total_nodes / len(graph.nodes())
+
+    def is_dominating_set(graph, dom_set):
+        for node in graph.nodes():
+            if node not in dom_set and not any(neighbor in dom_set for neighbor in graph.neighbors(node)):
+                return False
+        return True
+
+    # Special case handling
+    if len(graph.nodes()) == len(graph.edges()):
+        # Get the longest path in graph
+        longest_path = get_longest_path(graph)
+        # Split nodes in the longest path into dom_set1 and dom_set2
+        dom_set1 = [longest_path[i] for i in range(0, len(longest_path), 3)]
+        dom_set2 = [longest_path[i] for i in range(1, len(longest_path), 3)]
+        if longest_path[-1] not in dom_set2:
+            dom_set2.append(longest_path[-1])
+        if is_dominating_set(graph, dom_set1) and is_dominating_set(graph, dom_set2):
+            return [dom_set1, dom_set2]
+
+    dom_set1_trials = []
+    top_degree_nodes = sorted(graph.degree, key=lambda x: x[1], reverse=True)[:25]
+    for node, _ in top_degree_nodes:
+        dom_set1_trials.append(generate_dom_set1(node, graph))
+
+    dom_set1 = min(dom_set1_trials, key=lambda x: len(x))
+
+    temp_graph = graph.copy()
+    temp_graph.remove_nodes_from(dom_set1)
+    top_degree_nodes = sorted(temp_graph.degree, key=lambda x: x[1], reverse=True)[:25]
+    dom_set2_trials = []
+    for node, _ in top_degree_nodes:
+        dom_set2_trials.append(generate_dom_set2(node, graph, dom_set1))
+
+    best_score = float('inf')
+    for trial in dom_set2_trials:
+        score = compute_score(dom_set1, trial, graph)
+        if score < best_score:
+            dom_set2 = trial
+            best_score = score
+
+    return [dom_set1, dom_set2]
+
+    # weights = nx.get_node_attributes(g, 'weight')   # Pour obtenir un itérable avec les poids.
+    # return list(g.nodes), list(g.nodes)  # Une solution, c'est la plus mauvaise possible, score de 1.
 
 
 #########################################
